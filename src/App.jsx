@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { api } from "./api.js";
 import {
   Bell,
   CheckCircle2,
   ArrowLeft,
   Menu,
   X,
-  ChevronDown,
   PlusCircle,
   Users,
   Clock,
@@ -14,7 +14,42 @@ import {
   Scissors,
   Wrench,
   Armchair,
+  Tv,
 } from "lucide-react";
+
+/* ---------------------------------------------------------
+   3D tilt hook — used to give key cards real depth/perspective
+   that responds to the pointer, instead of a flat hover state.
+---------------------------------------------------------- */
+function useTilt(maxTiltDeg = 10) {
+  const ref = useRef(null);
+  const [style, setStyle] = useState({});
+
+  const onMouseMove = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    const rotateY = px * maxTiltDeg * 2;
+    const rotateX = -py * maxTiltDeg * 2;
+    setStyle({
+      transform: `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(30px) scale(1.035)`,
+      "--glare-x": `${(px + 0.5) * 100}%`,
+      "--glare-y": `${(py + 0.5) * 100}%`,
+      "--glare-o": 1,
+    });
+  };
+
+  const onMouseLeave = () => {
+    setStyle({
+      transform: "perspective(900px) rotateX(0deg) rotateY(0deg) translateZ(0) scale(1)",
+      "--glare-o": 0,
+    });
+  };
+
+  return { ref, style, onMouseMove, onMouseLeave };
+}
 
 /* ---------------------------------------------------------
    Design tokens and global styles
@@ -76,6 +111,23 @@ const GlobalStyles = () => (
 
     .container{ max-width:1160px; margin:0 auto; padding:0 24px; }
 
+    /* ---------- 3D tilt cards ---------- */
+    .tilt-card{
+      transition:transform 160ms cubic-bezier(.2,.8,.2,1), box-shadow 160ms ease;
+      transform-style:preserve-3d;
+      will-change:transform;
+      position:relative;
+      isolation:isolate;
+    }
+    .tilt-card::before{
+      content:"";
+      position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:5;
+      background:radial-gradient(circle at var(--glare-x,50%) var(--glare-y,50%), rgba(255,255,255,0.35), transparent 55%);
+      opacity:var(--glare-o,0);
+      transition:opacity 160ms ease;
+    }
+    .tilt-card:hover{ box-shadow:0 46px 90px rgba(16,22,43,0.34), 0 8px 22px rgba(16,22,43,0.16); }
+
     /* ---------- Nav ---------- */
     .nav{
       position:sticky; top:0; z-index:60;
@@ -113,8 +165,10 @@ const GlobalStyles = () => (
       background:var(--accent); color:var(--primary); border:none;
       padding:10px 18px; border-radius:999px; font-size:14.5px; font-weight:700;
       box-shadow:0 6px 16px rgba(240,166,60,0.35);
+      transition:transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
     }
-    .btn-amber:hover{ background:var(--accent-dark); }
+    .btn-amber:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 10px 22px rgba(240,166,60,0.42); }
+    .btn-amber:active{ transform:translateY(1px); }
     .hamburger{ display:none; background:none; border:none; padding:6px; color:var(--ink); }
     .mobile-menu{
       display:none; flex-direction:column; gap:2px; padding:10px 24px 16px;
@@ -135,22 +189,29 @@ const GlobalStyles = () => (
       background:var(--accent); color:var(--primary); border:none;
       padding:14px 26px; border-radius:999px; font-size:15.5px; font-weight:700;
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
-      box-shadow:0 10px 24px rgba(240,166,60,0.32);
+      box-shadow:0 10px 24px rgba(240,166,60,0.32), 0 2px 0 rgba(206,134,32,0.9) inset;
+      transition:transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
-    .btn-primary:hover{ background:var(--accent-dark); }
-    .btn-primary:disabled{ background:#CBD0DE; color:#7C8399; box-shadow:none; cursor:not-allowed; }
+    .btn-primary:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 16px 30px rgba(240,166,60,0.4), 0 2px 0 rgba(206,134,32,0.9) inset; }
+    .btn-primary:active{ transform:translateY(1px); box-shadow:0 6px 14px rgba(240,166,60,0.3), 0 2px 0 rgba(206,134,32,0.9) inset; }
+    .btn-primary:disabled{ background:#CBD0DE; color:#7C8399; box-shadow:none; cursor:not-allowed; transform:none; }
     .btn-secondary{
       background:var(--surface); color:var(--ink); border:1px solid var(--line);
       padding:13px 24px; border-radius:999px; font-size:15px; font-weight:600;
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      transition:transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
     }
-    .btn-secondary:hover{ border-color:var(--primary); color:var(--primary); }
+    .btn-secondary:hover{ border-color:var(--primary); color:var(--primary); transform:translateY(-2px); box-shadow:0 10px 22px rgba(16,22,43,0.1); }
+    .btn-secondary:active{ transform:translateY(1px); box-shadow:none; }
     .btn-dark{
       background:var(--primary); color:#fff; border:none;
       padding:14px 26px; border-radius:999px; font-size:15.5px; font-weight:700;
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      box-shadow:0 10px 24px rgba(16,22,43,0.28);
+      transition:transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
-    .btn-dark:hover{ background:#0E1733; }
+    .btn-dark:hover{ background:#0E1733; transform:translateY(-2px); box-shadow:0 16px 30px rgba(16,22,43,0.34); }
+    .btn-dark:active{ transform:translateY(1px); }
     .btn-text{
       background:none; border:none; color:var(--primary); font-weight:600; font-size:14.5px;
       display:inline-flex; align-items:center; gap:6px; padding:4px 0;
@@ -204,18 +265,30 @@ const GlobalStyles = () => (
     .section-head p{ color:var(--ink-soft); font-size:15px; }
 
     /* benefits */
-    .benefit-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+    .benefit-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:22px; perspective:1000px; }
     @media (max-width:760px){ .benefit-grid{ grid-template-columns:1fr; } }
-    .benefit-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:28px; }
+    .benefit-card{
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:28px;
+      transition:transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    }
+    .benefit-card:hover{
+      transform:translateY(-8px) rotateX(4deg); box-shadow:0 26px 50px rgba(16,22,43,0.16); border-color:transparent;
+    }
     .benefit-icon{ width:44px; height:44px; border-radius:12px; background:var(--primary-soft); color:var(--primary); display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
     .benefit-card h4{ font-size:18px; margin-bottom:9px; }
     .benefit-card p{ font-size:14.5px; color:var(--ink-soft); }
 
     /* how it works */
-    .steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
+    .steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:20px; perspective:1000px; }
     @media (max-width:900px){ .steps{ grid-template-columns:repeat(2,1fr);} }
     @media (max-width:520px){ .steps{ grid-template-columns:1fr; } }
-    .step-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:24px; }
+    .step-card{
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:24px;
+      transition:transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    }
+    .step-card:hover{
+      transform:translateY(-8px) rotateX(4deg); box-shadow:0 26px 50px rgba(16,22,43,0.16); border-color:transparent;
+    }
     .step-num{
       width:34px; height:34px; border-radius:10px; background:var(--primary); color:var(--accent);
       display:flex; align-items:center; justify-content:center; font-weight:700; font-family:'Space Grotesk',sans-serif;
@@ -353,18 +426,16 @@ const GlobalStyles = () => (
     .dash-head{ display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:22px; flex-wrap:wrap; }
     .dash-title{ display:flex; align-items:center; gap:12px; }
     .dash-avatar{ width:48px; height:48px; border-radius:14px; background:var(--primary); color:var(--accent); display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; }
-    .biz-select-wrap{
-      position:relative; display:inline-flex; align-items:center; gap:8px;
-      background:var(--surface); border:1px solid var(--line); border-radius:12px;
-      padding:9px 34px 9px 14px; font-size:14.5px; font-weight:500;
-    }
-    .biz-select-wrap select{ appearance:none; border:none; background:none; font-size:14.5px; font-weight:600; color:var(--ink); outline:none; }
-    .biz-select-chevron{ position:absolute; right:12px; pointer-events:none; color:var(--ink-faint); }
-
-    .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-bottom:26px; }
+    .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-bottom:26px; perspective:1000px; }
     @media (max-width:900px){ .stat-grid{ grid-template-columns:repeat(2,1fr);} }
     @media (max-width:480px){ .stat-grid{ grid-template-columns:1fr; } }
-    .stat-card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md); padding:20px; }
+    .stat-card{
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md); padding:20px;
+      transition:transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    }
+    .stat-card:hover{
+      transform:translateY(-6px) rotateX(4deg); box-shadow:0 20px 40px rgba(16,22,43,0.14); border-color:transparent;
+    }
     .stat-icon{ width:36px; height:36px; border-radius:10px; background:var(--primary-soft); color:var(--primary); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
     .stat-value{ font-family:'Space Grotesk',sans-serif; font-size:24px; font-weight:700; margin-bottom:2px; }
     .stat-label{ font-size:13px; color:var(--ink-soft); }
@@ -379,9 +450,11 @@ const GlobalStyles = () => (
       background:var(--accent); color:var(--primary); border:none;
       padding:16px 30px; border-radius:999px; font-size:16.5px; font-weight:700;
       box-shadow:0 10px 24px rgba(240,166,60,0.32); flex-shrink:0;
+      transition:transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
     }
-    .btn-call-next:hover{ background:var(--accent-dark); }
-    .btn-call-next:disabled{ background:rgba(255,255,255,0.25); color:rgba(255,255,255,0.6); box-shadow:none; cursor:not-allowed; }
+    .btn-call-next:hover{ background:var(--accent-dark); transform:translateY(-2px) scale(1.02); box-shadow:0 16px 32px rgba(240,166,60,0.4); }
+    .btn-call-next:active{ transform:translateY(1px) scale(1); }
+    .btn-call-next:disabled{ background:rgba(255,255,255,0.25); color:rgba(255,255,255,0.6); box-shadow:none; cursor:not-allowed; transform:none; }
 
     .queue-head-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
 
@@ -411,11 +484,70 @@ const GlobalStyles = () => (
       text-align:center; padding:60px 20px; color:var(--ink-soft); background:var(--surface);
       border-radius:var(--radius-lg); border:1px dashed var(--line);
     }
+
+    /* ---------- Notification center ---------- */
+    .notif-row{ position:relative; display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+    .notif-bell-btn{
+      position:relative; background:var(--surface); border:1px solid var(--line); border-radius:999px;
+      width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:var(--ink-soft);
+    }
+    .notif-bell-btn:hover{ border-color:var(--primary); color:var(--primary); }
+    .notif-badge{
+      position:absolute; top:-3px; right:-3px; min-width:17px; height:17px; padding:0 4px; border-radius:999px;
+      background:var(--urgent); color:#fff; font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    }
+    .notif-panel{
+      position:absolute; top:48px; right:0; width:300px; max-height:340px; overflow-y:auto; z-index:80;
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md); box-shadow:var(--shadow-pop);
+      padding:8px;
+    }
+    .notif-item{ padding:11px 12px; border-radius:10px; }
+    .notif-item + .notif-item{ margin-top:2px; }
+    .notif-item .msg{ font-size:13.5px; color:var(--ink); margin-bottom:3px; }
+    .notif-item .time{ font-size:11.5px; color:var(--ink-faint); }
+    .notif-empty{ padding:20px 12px; text-align:center; font-size:13.5px; color:var(--ink-faint); }
+
+    /* ---------- Display screen (waiting-room TV) ---------- */
+    .display-screen{
+      position:fixed; inset:0; color:#fff; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; text-align:center; font-family:'Inter',sans-serif; z-index:300; padding:40px;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 38%, rgba(240,166,60,0.16), transparent 65%),
+        radial-gradient(ellipse 80% 60% at 50% 100%, rgba(23,34,74,0.6), transparent 70%),
+        #0A1024;
+      perspective:1400px;
+    }
+    .display-header{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between; padding:28px 44px; }
+    .display-biz{ font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:700; color:#fff; }
+    .display-live{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--accent); font-weight:600; }
+    .display-live .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px 2px rgba(240,166,60,0.7); animation:displayPulse 1.6s ease-in-out infinite; }
+    .display-now-label{ font-size:20px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(255,255,255,0.55); font-weight:600; margin-bottom:18px; }
+    .display-token{
+      font-family:'JetBrains Mono',monospace; font-size:clamp(90px,16vw,220px); font-weight:700; color:var(--accent); line-height:1;
+      text-shadow:
+        1px 1px 0 #CE8620, 2px 2px 0 #CE8620, 3px 3px 0 #CE8620, 4px 4px 0 #CE8620,
+        5px 5px 0 #B06B19, 6px 6px 0 #B06B19, 7px 7px 0 #B06B19, 8px 8px 0 #B06B19,
+        10px 10px 18px rgba(0,0,0,0.5), 0 0 70px rgba(240,166,60,0.4);
+      animation:displayFloat 4s ease-in-out infinite;
+      transform-style:preserve-3d;
+    }
+    .display-service{ font-size:24px; color:rgba(255,255,255,0.75); margin-top:14px; }
+    .display-upnext{ margin-top:56px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center; }
+    .display-upnext-label{ font-size:13px; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-right:6px; }
+    .display-chip{
+      font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:#fff;
+      background:rgba(255,255,255,0.08); border-radius:12px; padding:10px 18px;
+      border:1px solid rgba(255,255,255,0.1);
+      box-shadow:0 8px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.14);
+    }
+    .display-footer{ position:absolute; bottom:24px; font-size:13px; color:rgba(255,255,255,0.35); }
+    @keyframes displayFloat{ 0%,100%{ transform:translateZ(0) translateY(0);} 50%{ transform:translateZ(40px) translateY(-10px);} }
+    @keyframes displayPulse{ 0%,100%{ opacity:1;} 50%{ opacity:0.4;} }
   `}</style>
 );
 
 /* ---------------------------------------------------------
-   Mock data
+   Constants
 ---------------------------------------------------------- */
 const CATEGORY_ICON = {
   Clinic: Stethoscope,
@@ -423,57 +555,9 @@ const CATEGORY_ICON = {
   "Service Center": Wrench,
 };
 
-const WAITING_NAMES = [
-  "Ali Raza", "Sara Malik", "Hassan Tariq", "Ayesha Noor", "Bilal Sheikh",
-  "Fatima Iqbal", "Usman Farooq", "Zainab Aslam", "Hamza Khan", "Mahnoor Butt",
-  "Owais Ahmed", "Rabia Yousuf",
-];
-
-function buildQueue(prefix, startNum, count, services) {
-  return Array.from({ length: count }, (_, i) => ({
-    token: prefix + (startNum + i),
-    name: WAITING_NAMES[(startNum + i) % WAITING_NAMES.length],
-    service: services[(startNum + i) % services.length],
-  }));
-}
-
-const INITIAL_BUSINESSES = [
-  {
-    id: 1,
-    name: "CityCare Diagnostic Center",
-    category: "Clinic",
-    services: ["General Consultation", "Blood Test", "X-Ray", "Ultrasound"],
-    prefix: "A",
-    avgServiceMinutes: 5,
-    completedCount: 18,
-    servingCustomer: { token: "A32", name: "Nadia Farooqi", service: "General Consultation" },
-    queue: buildQueue("A", 33, 5, ["General Consultation", "Blood Test", "X-Ray", "Ultrasound"]),
-  },
-  {
-    id: 2,
-    name: "Glow Salon",
-    category: "Salon",
-    services: ["Haircut", "Hair Color", "Manicure", "Facial"],
-    prefix: "B",
-    avgServiceMinutes: 10,
-    completedCount: 9,
-    servingCustomer: { token: "B10", name: "Ayesha Khan", service: "Haircut" },
-    queue: buildQueue("B", 11, 4, ["Haircut", "Hair Color", "Manicure", "Facial"]),
-  },
-  {
-    id: 3,
-    name: "QuickFix Service Center",
-    category: "Service Center",
-    services: ["Mobile Repair", "Laptop Repair", "Appliance Repair"],
-    prefix: "C",
-    avgServiceMinutes: 15,
-    completedCount: 4,
-    servingCustomer: { token: "C5", name: "Bilal Ahmed", service: "Laptop Repair" },
-    queue: buildQueue("C", 6, 3, ["Mobile Repair", "Laptop Repair", "Appliance Repair"]),
-  },
-];
-
 const CATEGORIES = ["All", "Clinic", "Salon", "Service Center"];
+const CUSTOMER_TOKEN_KEY = "queueless_customer_token";
+const AUTH_KEY = "queueless_auth";
 
 function tokenNumber(token) {
   return parseInt(token.replace(/\D/g, ""), 10);
@@ -574,6 +658,8 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
   const previewTokenNum = tokenNumber(preview.servingCustomer.token) + peopleAhead + 1;
   const estWait = Math.round(preview.avgServiceMinutes * peopleAhead);
   const progressPct = peopleAhead === 0 ? 100 : 8;
+  const tilt = useTilt(16);
+  const priceTilt = useTilt(12);
 
   return (
     <>
@@ -592,7 +678,13 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
 
           <div className="hero-visual">
             <div className="chip-behind" />
-            <div className="board-card">
+            <div
+              ref={tilt.ref}
+              className="board-card tilt-card"
+              style={tilt.style}
+              onMouseMove={tilt.onMouseMove}
+              onMouseLeave={tilt.onMouseLeave}
+            >
               <div className="board-top">
                 <span className="board-label">{preview.name}</span>
                 <span className="board-live">
@@ -703,7 +795,13 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
                 Get Started
               </button>
             </div>
-            <div className="price-card highlight">
+            <div
+              ref={priceTilt.ref}
+              className="price-card highlight tilt-card"
+              style={priceTilt.style}
+              onMouseMove={priceTilt.onMouseMove}
+              onMouseLeave={priceTilt.onMouseLeave}
+            >
               <span className="price-pop">Most popular</span>
               <div className="price-tier">Professional</div>
               <div className="price-amount">Rs 7,000</div>
@@ -760,6 +858,35 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
 /* ---------------------------------------------------------
    Businesses list page
 ---------------------------------------------------------- */
+function BusinessCard({ business: b, onClick }) {
+  const tilt = useTilt(14);
+  const Icon = CATEGORY_ICON[b.category] || Stethoscope;
+  const estWait = Math.round(b.avgServiceMinutes * b.queue.length);
+
+  return (
+    <button
+      ref={tilt.ref}
+      className="business-card tilt-card"
+      style={tilt.style}
+      onMouseMove={tilt.onMouseMove}
+      onMouseLeave={tilt.onMouseLeave}
+      onClick={onClick}
+    >
+      <div className="business-icon">
+        <Icon size={24} />
+      </div>
+      <div>
+        <div className="business-name">{b.name}</div>
+        <span className="business-cat">{b.category}</span>
+      </div>
+      <div className="business-meta">
+        <span>{b.services.length} services</span>
+        <span>About {estWait} min wait</span>
+      </div>
+    </button>
+  );
+}
+
 function BusinessesPage({ businesses, goToBusiness }) {
   const [category, setCategory] = useState("All");
   const filtered = businesses.filter((b) => category === "All" || b.category === category);
@@ -784,25 +911,9 @@ function BusinessesPage({ businesses, goToBusiness }) {
       </div>
 
       <div className="business-grid">
-        {filtered.map((b) => {
-          const Icon = CATEGORY_ICON[b.category] || Stethoscope;
-          const estWait = Math.round(b.avgServiceMinutes * b.queue.length);
-          return (
-            <button key={b.id} className="business-card" onClick={() => goToBusiness(b.id)}>
-              <div className="business-icon">
-                <Icon size={24} />
-              </div>
-              <div>
-                <div className="business-name">{b.name}</div>
-                <span className="business-cat">{b.category}</span>
-              </div>
-              <div className="business-meta">
-                <span>{b.services.length} services</span>
-                <span>About {estWait} min wait</span>
-              </div>
-            </button>
-          );
-        })}
+        {filtered.map((b) => (
+          <BusinessCard key={b.id} business={b} onClick={() => goToBusiness(b.id)} />
+        ))}
       </div>
     </div>
   );
@@ -811,8 +922,75 @@ function BusinessesPage({ businesses, goToBusiness }) {
 /* ---------------------------------------------------------
    Business detail / token page
 ---------------------------------------------------------- */
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function NotificationBell({ entryId, status, peopleAhead, joinMessage }) {
+  const storageKey = `queueless_notifications_${entryId}`;
+  const [notifications, setNotifications] = useState(() => readStoredJSON(storageKey) || []);
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const prevRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(notifications));
+  }, [notifications, storageKey]);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    let message = null;
+
+    if (prev === null) {
+      message = joinMessage;
+    } else if (prev.status !== status) {
+      if (status === "serving") message = "It's your turn — please return to the business.";
+      else if (status === "done") message = "Your visit is complete.";
+    } else if (status === "waiting" && prev.peopleAhead !== peopleAhead) {
+      message = peopleAhead === 0 ? "You're almost next." : `${peopleAhead} people ahead of you now.`;
+    }
+
+    if (message) {
+      setNotifications((list) => [{ id: crypto.randomUUID(), message, time: Date.now() }, ...list]);
+      setUnread((n) => n + 1);
+    }
+    prevRef.current = { status, peopleAhead };
+  }, [status, peopleAhead, joinMessage]);
+
+  return (
+    <div className="notif-bell-wrap" style={{ position: "relative" }}>
+      <button
+        className="notif-bell-btn"
+        onClick={() => {
+          setOpen((o) => !o);
+          setUnread(0);
+        }}
+        aria-label="Notifications"
+      >
+        <Bell size={17} />
+        {unread > 0 && <span className="notif-badge">{unread}</span>}
+      </button>
+      {open && (
+        <div className="notif-panel">
+          {notifications.length === 0 ? (
+            <div className="notif-empty">No notifications yet.</div>
+          ) : (
+            notifications.map((n) => (
+              <div key={n.id} className="notif-item">
+                <div className="msg">{n.message}</div>
+                <div className="time">{formatTime(n.time)}</div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BusinessDetailPage({ business, customerToken, onJoin, onLeave, onBack, onSimulate }) {
   const [notified, setNotified] = useState(false);
+  const tilt = useTilt(11);
 
   if (!business) {
     return (
@@ -831,11 +1009,11 @@ function BusinessDetailPage({ business, customerToken, onJoin, onLeave, onBack, 
   let peopleAhead = 0;
   let status = "waiting";
   if (joined) {
-    const idx = business.queue.findIndex((c) => c.token === customerToken.token);
+    const idx = business.queue.findIndex((c) => c.id === customerToken.id);
     if (idx !== -1) {
       peopleAhead = idx;
       status = "waiting";
-    } else if (business.servingCustomer && business.servingCustomer.token === customerToken.token) {
+    } else if (business.servingCustomer && business.servingCustomer.id === customerToken.id) {
       peopleAhead = 0;
       status = "serving";
     } else {
@@ -858,9 +1036,20 @@ function BusinessDetailPage({ business, customerToken, onJoin, onLeave, onBack, 
 
   return (
     <div className="container page-shell">
-      <button className="back-link" onClick={onBack}>
-        <ArrowLeft size={16} /> Back to businesses
-      </button>
+      <div className="notif-row">
+        <button className="back-link" onClick={onBack} style={{ marginBottom: 0 }}>
+          <ArrowLeft size={16} /> Back to businesses
+        </button>
+        {joined && (
+          <NotificationBell
+            key={customerToken.id}
+            entryId={customerToken.id}
+            status={status}
+            peopleAhead={peopleAhead}
+            joinMessage={`You joined the queue for ${customerToken.service}. Your token is ${customerToken.token}.`}
+          />
+        )}
+      </div>
 
       <div className="detail-grid">
         <div>
@@ -898,7 +1087,13 @@ function BusinessDetailPage({ business, customerToken, onJoin, onLeave, onBack, 
         <div>
           {joined ? (
             <>
-              <div className="token-card">
+              <div
+                ref={tilt.ref}
+                className="token-card tilt-card"
+                style={tilt.style}
+                onMouseMove={tilt.onMouseMove}
+                onMouseLeave={tilt.onMouseLeave}
+              >
                 <div className="biz">{business.name}</div>
                 <div className="svc">{customerToken.service}</div>
                 <div className="token-pair">
@@ -959,13 +1154,92 @@ function BusinessDetailPage({ business, customerToken, onJoin, onLeave, onBack, 
 /* ---------------------------------------------------------
    Business dashboard
 ---------------------------------------------------------- */
-function DashboardPage({ businesses, selectedId, setSelectedId, onCallNext, onAddCustomer }) {
+function LoginForm({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      await onLogin(email.trim(), password);
+    } catch (err) {
+      setError(err.message || "Could not log in.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="container page-shell">
+      <div className="section-head">
+        <h2>Business login</h2>
+        <p>Log in to manage your queue.</p>
+      </div>
+      <form className="add-form-card" onSubmit={submit}>
+        <div className="field">
+          <label>Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@business.pk"
+            required
+          />
+        </div>
+        <div className="field">
+          <label>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="********"
+            required
+          />
+        </div>
+        {error && <div className="field-error">{error}</div>}
+        <div className="form-actions">
+          <button className="btn-primary" type="submit" disabled={submitting}>
+            {submitting ? "Logging in…" : "Log In"}
+          </button>
+        </div>
+      </form>
+      <div className="add-form-card">
+        <p style={{ fontWeight: 600, marginBottom: 10 }}>Demo accounts</p>
+        <p className="mono" style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 4 }}>
+          citycare@queueless.pk / demo1234
+        </p>
+        <p className="mono" style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 4 }}>
+          glow@queueless.pk / demo1234
+        </p>
+        <p className="mono" style={{ fontSize: 13.5, color: "var(--ink-soft)" }}>
+          quickfix@queueless.pk / demo1234
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardPage({ businesses, auth, onLogin, onLogout, onCallNext, onAddCustomer }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [name, setName] = useState("");
   const [service, setService] = useState("");
   const [errors, setErrors] = useState({});
 
-  const business = businesses.find((b) => b.id === selectedId) || businesses[0];
+  if (!auth) return <LoginForm onLogin={onLogin} />;
+
+  const business = businesses.find((b) => b.id === auth.business.id);
+  if (!business) {
+    return (
+      <div className="container page-shell">
+        <p>Loading your business…</p>
+      </div>
+    );
+  }
+
   const waitingCount = business.queue.length;
   const avgWait =
     waitingCount > 0 ? Math.round((business.avgServiceMinutes * (waitingCount - 1)) / 2) : 0;
@@ -993,19 +1267,26 @@ function DashboardPage({ businesses, selectedId, setSelectedId, onCallNext, onAd
         <div className="dash-title">
           <div className="dash-avatar">{business.name.charAt(0)}</div>
           <div>
-            <h2 style={{ fontSize: 22 }}>QUEUELESS Business</h2>
+            <h2 style={{ fontSize: 22 }}>{business.name}</h2>
             <p style={{ color: "var(--ink-soft)", fontSize: 14 }}>Manage today's queue</p>
           </div>
         </div>
-        <div className="biz-select-wrap">
-          <select value={business.id} onChange={(e) => setSelectedId(Number(e.target.value))}>
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="biz-select-chevron" />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            className="btn-outline-nav"
+            onClick={() =>
+              window.open(
+                `${window.location.origin}${window.location.pathname}?display=${business.id}`,
+                "_blank"
+              )
+            }
+          >
+            <Tv size={16} style={{ marginRight: 6, verticalAlign: -3 }} />
+            Open Display Screen
+          </button>
+          <button className="btn-outline-nav" onClick={onLogout}>
+            Log Out
+          </button>
         </div>
       </div>
 
@@ -1110,7 +1391,7 @@ function DashboardPage({ businesses, selectedId, setSelectedId, onCallNext, onAd
             </tr>
           )}
           {business.queue.map((c) => (
-            <tr key={c.token}>
+            <tr key={c.id}>
               <td className="queue-token mono">{c.token}</td>
               <td>{c.name}</td>
               <td>{c.service}</td>
@@ -1167,17 +1448,136 @@ function Footer({ goTo }) {
 }
 
 /* ---------------------------------------------------------
+   Display screen (waiting-room TV / caller board)
+---------------------------------------------------------- */
+function DisplayScreen({ businessId }) {
+  const [business, setBusiness] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await api.getBusiness(businessId);
+        if (!cancelled) {
+          setBusiness(data);
+          setError("");
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Could not load this business.");
+      }
+    };
+    load();
+    const interval = setInterval(load, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [businessId]);
+
+  if (!business) {
+    return (
+      <div className="qls-root">
+        <GlobalStyles />
+        <div className="display-screen">
+          <p style={{ color: "rgba(255,255,255,0.6)" }}>{error || "Loading…"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const upNext = business.queue.slice(0, 4);
+
+  return (
+    <div className="qls-root">
+      <GlobalStyles />
+      <div className="display-screen">
+        <div className="display-header">
+          <span className="display-biz">{business.name}</span>
+          <span className="display-live">
+            <span className="dot" />
+            Live
+          </span>
+        </div>
+
+        <div className="display-now-label">Now Serving</div>
+        <div className="display-token">{business.servingCustomer ? business.servingCustomer.token : "—"}</div>
+        {business.servingCustomer && <div className="display-service">{business.servingCustomer.service}</div>}
+
+        {upNext.length > 0 && (
+          <div className="display-upnext">
+            <span className="display-upnext-label">Up next</span>
+            {upNext.map((c) => (
+              <span key={c.id} className="display-chip">
+                {c.token}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="display-footer">QUEUELESS</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
    App
 ---------------------------------------------------------- */
+function readStoredJSON(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
+  const displayBusinessId = new URLSearchParams(window.location.search).get("display");
+  if (displayBusinessId) {
+    return <DisplayScreen businessId={Number(displayBusinessId)} />;
+  }
+  return <MainApp />;
+}
+
+function MainApp() {
   const [page, setPage] = useState("home");
-  const [businesses, setBusinesses] = useState(INITIAL_BUSINESSES);
+  const [businesses, setBusinesses] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [selectedBusinessId, setSelectedBusinessId] = useState(1);
-  const [customerToken, setCustomerToken] = useState(null);
+  const [customerToken, setCustomerToken] = useState(() => readStoredJSON(CUSTOMER_TOKEN_KEY));
+  const [auth, setAuth] = useState(() => readStoredJSON(AUTH_KEY));
   const [toast, setToast] = useState("");
   const [showPush, setShowPush] = useState(false);
   const howRef = useRef(null);
   const pricingRef = useRef(null);
+
+  const refreshBusinesses = useCallback(async () => {
+    try {
+      const data = await api.getBusinesses();
+      setBusinesses(data);
+      setLoadError("");
+    } catch (err) {
+      setLoadError(err.message || "Could not reach the QUEUELESS server.");
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshBusinesses();
+    const interval = setInterval(refreshBusinesses, 4000);
+    return () => clearInterval(interval);
+  }, [refreshBusinesses]);
+
+  useEffect(() => {
+    if (customerToken) localStorage.setItem(CUSTOMER_TOKEN_KEY, JSON.stringify(customerToken));
+    else localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  }, [customerToken]);
+
+  useEffect(() => {
+    if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+    else localStorage.removeItem(AUTH_KEY);
+  }, [auth]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1211,65 +1611,71 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleJoin = (businessId, service) => {
+  const handleJoin = async (businessId, service) => {
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return;
-    const servingNum = business.servingCustomer ? tokenNumber(business.servingCustomer.token) : 0;
-    const nextNum = servingNum + business.queue.length + 1;
-    const newToken = business.prefix + nextNum;
     const initialPeopleAhead = business.queue.length;
-
-    setBusinesses((prev) =>
-      prev.map((b) =>
-        b.id === businessId
-          ? { ...b, queue: [...b.queue, { token: newToken, name: "You", service }] }
-          : b
-      )
-    );
-    setCustomerToken({ businessId, token: newToken, service, initialPeopleAhead });
+    try {
+      const result = await api.join(businessId, service);
+      setCustomerToken({ id: result.id, businessId, token: result.token, service, initialPeopleAhead });
+      refreshBusinesses();
+    } catch (err) {
+      setToast(err.message || "Could not join the queue.");
+    }
   };
 
-  const handleLeaveQueue = (businessId) => {
-    setBusinesses((prev) =>
-      prev.map((b) =>
-        b.id === businessId ? { ...b, queue: b.queue.filter((c) => c.token !== customerToken.token) } : b
-      )
-    );
+  const handleLeaveQueue = async () => {
+    if (!customerToken) return;
+    try {
+      await api.leave(customerToken.id);
+    } catch {
+      // entry may already be gone server-side; still clear it locally
+    }
+    localStorage.removeItem(`queueless_notifications_${customerToken.id}`);
     setCustomerToken(null);
+    refreshBusinesses();
   };
 
-  const handleCallNext = (businessId) => {
-    const business = businesses.find((b) => b.id === businessId);
-    if (!business || business.queue.length === 0) return;
-    const nextCustomer = business.queue[0];
-    setBusinesses((prev) =>
-      prev.map((b) =>
-        b.id === businessId
-          ? {
-              ...b,
-              servingCustomer: nextCustomer,
-              queue: b.queue.slice(1),
-              completedCount: b.completedCount + (b.servingCustomer ? 1 : 0),
-            }
-          : b
-      )
-    );
-    setToast(`Now serving ${nextCustomer.token}`);
+  const handleCallNext = async (businessId) => {
+    if (!auth) return;
+    try {
+      const updated = await api.callNext(businessId, auth.token);
+      setToast(`Now serving ${updated.servingCustomer.token}`);
+      refreshBusinesses();
+    } catch (err) {
+      setToast(err.message || "Could not call the next customer.");
+    }
   };
 
-  const handleAddCustomer = (businessId, name, service) => {
-    const business = businesses.find((b) => b.id === businessId);
-    if (!business) return;
-    const servingNum = business.servingCustomer ? tokenNumber(business.servingCustomer.token) : 0;
-    const nextNum = servingNum + business.queue.length + 1;
-    const newToken = business.prefix + nextNum;
-    setBusinesses((prev) =>
-      prev.map((b) =>
-        b.id === businessId ? { ...b, queue: [...b.queue, { token: newToken, name, service }] } : b
-      )
-    );
-    setToast(`${name} added to the queue as ${newToken}`);
+  const handleAddCustomer = async (businessId, name, service) => {
+    if (!auth) return;
+    try {
+      await api.addCustomer(businessId, auth.token, name, service);
+      setToast(`${name} added to the queue`);
+      refreshBusinesses();
+    } catch (err) {
+      setToast(err.message || "Could not add the customer.");
+    }
   };
+
+  const handleLogin = async (email, password) => {
+    const result = await api.login(email, password);
+    setAuth({ token: result.token, business: result.business });
+  };
+
+  const handleLogout = () => setAuth(null);
+
+  if (businesses === null) {
+    return (
+      <div className="qls-root">
+        <GlobalStyles />
+        <div className="container page-shell">
+          <p>Loading QUEUELESS…</p>
+          {loadError && <p style={{ color: "var(--urgent)", marginTop: 10 }}>{loadError}</p>}
+        </div>
+      </div>
+    );
+  }
 
   const selectedBusiness = businesses.find((b) => b.id === selectedBusinessId);
 
@@ -1302,8 +1708,9 @@ export default function App() {
       {page === "dashboard" && (
         <DashboardPage
           businesses={businesses}
-          selectedId={selectedBusinessId}
-          setSelectedId={setSelectedBusinessId}
+          auth={auth}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
           onCallNext={handleCallNext}
           onAddCustomer={handleAddCustomer}
         />
