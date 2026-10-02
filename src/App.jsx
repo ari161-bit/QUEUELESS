@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, forwardRef } from "react";
 import { api } from "./api.js";
 import {
   Bell,
   CheckCircle2,
   ArrowLeft,
+  ArrowRight,
   Menu,
   X,
   PlusCircle,
@@ -15,6 +16,14 @@ import {
   Wrench,
   Armchair,
   Tv,
+  Zap,
+  Smartphone,
+  Gauge,
+  Building2,
+  TrendingUp,
+  TrendingDown,
+  MapPin,
+  ShieldCheck,
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -51,6 +60,104 @@ function useTilt(maxTiltDeg = 10) {
   return { ref, style, onMouseMove, onMouseLeave };
 }
 
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* ---------------------------------------------------------
+   Scroll-reveal — fades/rises an element in the first time it
+   crosses into view, once, via IntersectionObserver. Skips
+   straight to visible when the user prefers reduced motion.
+---------------------------------------------------------- */
+function useReveal(threshold = 0.18) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (prefersReducedMotion()) {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold, rootMargin: "0px 0px -8% 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  return { ref, visible };
+}
+
+const Reveal = forwardRef(function Reveal(
+  { children, className = "", delay = 0, as = "div", style, ...rest },
+  forwardedRef
+) {
+  const { ref: revealRef, visible } = useReveal();
+  const setRefs = (node) => {
+    revealRef.current = node;
+    if (typeof forwardedRef === "function") forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  };
+  const Tag = as;
+  return (
+    <Tag
+      ref={setRefs}
+      className={"reveal" + (visible ? " reveal-visible" : "") + (className ? " " + className : "")}
+      style={{ ...style, transitionDelay: visible ? `${delay}ms` : "0ms" }}
+      {...rest}
+    >
+      {children}
+    </Tag>
+  );
+});
+
+/* ---------------------------------------------------------
+   Navbar scroll state — toggles the "scrolled" (blurred/solid)
+   look once the page has scrolled past the hero a little.
+---------------------------------------------------------- */
+function useScrolled(thresholdPx = 10) {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > thresholdPx);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [thresholdPx]);
+  return scrolled;
+}
+
+/* ---------------------------------------------------------
+   Subtle pointer parallax — writes normalized -0.5..0.5 cursor
+   position as CSS vars on the container; each layer picks its
+   own depth via a CSS multiplier. Disabled on touch/reduced motion.
+---------------------------------------------------------- */
+function useParallax() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (prefersReducedMotion() || window.matchMedia("(pointer: coarse)").matches) return;
+    const onMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width - 0.5;
+      const py = (e.clientY - rect.top) / rect.height - 0.5;
+      el.style.setProperty("--mx", px.toFixed(3));
+      el.style.setProperty("--my", py.toFixed(3));
+    };
+    el.addEventListener("mousemove", onMove, { passive: true });
+    return () => el.removeEventListener("mousemove", onMove);
+  }, []);
+  return ref;
+}
+
 /* ---------------------------------------------------------
    Design tokens and global styles
 ---------------------------------------------------------- */
@@ -59,26 +166,46 @@ const GlobalStyles = () => (
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
 
     :root{
-      --bg:#080B18;
-      --surface:#121732;
-      --surface-strong:#171D45;
-      --ink:#F5F7FF;
-      --ink-soft:#A6ACD4;
-      --ink-faint:#6D75A3;
-      --primary:#93A4FF;
-      --primary-soft:rgba(147,164,255,0.14);
-      --accent:#F0A63C;
-      --accent-dark:#FFC163;
-      --accent-soft:rgba(240,166,60,0.16);
-      --on-accent:#1A1330;
-      --urgent:#FF7A69;
-      --urgent-soft:rgba(255,122,105,0.16);
+      --bg:#07111F;
+      --surface:#0B1F33;
+      --surface-strong:#0D2742;
+      --ink:#F7FBFF;
+      --ink-soft:#A9B7CC;
+      --ink-faint:#64748B;
+      --primary:#38BDF8;
+      --primary-soft:rgba(56,189,248,0.14);
+      --accent:#0EA5E9;
+      --accent-dark:#22D3EE;
+      --accent-soft:rgba(14,165,233,0.16);
+      --on-accent:#FFFFFF;
+      --urgent:#FB7185;
+      --urgent-soft:rgba(251,113,133,0.16);
       --line:rgba(255,255,255,0.09);
       --radius-lg:22px;
       --radius-md:14px;
       --radius-sm:9px;
       --shadow-card:0 1px 2px rgba(0,0,0,0.35), 0 16px 40px rgba(0,0,0,0.45);
       --shadow-pop:0 34px 90px rgba(0,0,0,0.6);
+    }
+
+    /* Light sections: scope-local token overrides so every existing
+       component (cards, buttons, text) that already reads var(--surface)/
+       var(--ink)/etc. automatically adapts, without per-component rules. */
+    .section-light{
+      --bg:#F7FBFF;
+      --surface:#FFFFFF;
+      --surface-strong:#EAF8FF;
+      --ink:#0B1A2B;
+      --ink-soft:#475569;
+      --ink-faint:#64748B;
+      --primary:#0284C7;
+      --primary-soft:rgba(14,165,233,0.09);
+      --accent-soft:rgba(14,165,233,0.1);
+      --line:rgba(11,26,43,0.1);
+      --shadow-card:0 1px 2px rgba(11,26,43,0.04), 0 14px 32px rgba(11,26,43,0.08);
+      --shadow-pop:0 30px 70px rgba(11,26,43,0.14);
+      background:var(--bg);
+      color:var(--ink);
     }
 
     *{ box-sizing:border-box; }
@@ -133,9 +260,16 @@ const GlobalStyles = () => (
     /* ---------- Nav ---------- */
     .nav{
       position:sticky; top:0; z-index:60;
-      background:rgba(8,11,24,0.82);
-      backdrop-filter:blur(12px);
-      border-bottom:1px solid var(--line);
+      background:rgba(7,17,31,0.1);
+      backdrop-filter:blur(0px);
+      border-bottom:1px solid transparent;
+      transition:background 280ms ease, backdrop-filter 280ms ease, border-color 280ms ease, box-shadow 280ms ease;
+    }
+    .nav.nav-scrolled{
+      background:rgba(7,17,31,0.82);
+      backdrop-filter:blur(14px);
+      border-bottom-color:var(--line);
+      box-shadow:0 14px 34px rgba(0,0,0,0.22);
     }
     .nav-inner{
       max-width:1160px; margin:0 auto; padding:14px 24px;
@@ -163,26 +297,28 @@ const GlobalStyles = () => (
       padding:9px 17px; border-radius:999px; font-size:14.5px; font-weight:600;
     }
     .btn-outline-nav:hover{ border-color:var(--primary); color:var(--primary); }
-    .btn-amber{
+    .btn-accent{
       background:var(--accent); color:var(--on-accent); border:none;
       padding:10px 18px; border-radius:999px; font-size:14.5px; font-weight:700;
-      box-shadow:0 6px 16px rgba(240,166,60,0.35);
+      box-shadow:0 6px 16px rgba(14,165,233,0.35);
       transition:transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
     }
-    .btn-amber:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 10px 22px rgba(240,166,60,0.42); }
-    .btn-amber:active{ transform:translateY(1px); }
+    .btn-accent:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 10px 22px rgba(14,165,233,0.42); }
+    .btn-accent:active{ transform:translateY(1px); }
     .hamburger{ display:none; background:none; border:none; padding:6px; color:var(--ink); }
     .mobile-menu{
       display:none; flex-direction:column; gap:2px; padding:10px 24px 16px;
       border-bottom:1px solid var(--line); background:var(--bg);
     }
-    .mobile-menu.open{ display:flex; }
+    .mobile-menu.open{ display:flex; animation:mobileMenuIn 240ms cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes mobileMenuIn{ from{ opacity:0; transform:translateY(-8px);} to{ opacity:1; transform:translateY(0);} }
+    @media (prefers-reduced-motion: reduce){ .mobile-menu.open{ animation:none; } }
     .mobile-menu .nav-link{ text-align:left; width:100%; }
-    .mobile-menu .btn-amber, .mobile-menu .btn-outline-nav{ width:100%; margin-top:8px; text-align:center; justify-content:center; }
+    .mobile-menu .btn-accent, .mobile-menu .btn-outline-nav{ width:100%; margin-top:8px; text-align:center; justify-content:center; }
 
     @media (max-width:860px){
       .nav-links{ display:none; }
-      .nav-right .btn-outline-nav, .nav-right .btn-amber{ display:none; }
+      .nav-right .btn-outline-nav, .nav-right .btn-accent{ display:none; }
       .hamburger{ display:flex; }
     }
 
@@ -191,11 +327,11 @@ const GlobalStyles = () => (
       background:var(--accent); color:var(--on-accent); border:none;
       padding:14px 26px; border-radius:999px; font-size:15.5px; font-weight:700;
       display:inline-flex; align-items:center; justify-content:center; gap:8px;
-      box-shadow:0 10px 24px rgba(240,166,60,0.32), 0 2px 0 rgba(206,134,32,0.9) inset;
+      box-shadow:0 10px 24px rgba(14,165,233,0.32), 0 2px 0 rgba(3,105,161,0.9) inset;
       transition:transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
-    .btn-primary:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 16px 30px rgba(240,166,60,0.4), 0 2px 0 rgba(206,134,32,0.9) inset; }
-    .btn-primary:active{ transform:translateY(1px); box-shadow:0 6px 14px rgba(240,166,60,0.3), 0 2px 0 rgba(206,134,32,0.9) inset; }
+    .btn-primary:hover{ background:var(--accent-dark); transform:translateY(-2px); box-shadow:0 16px 30px rgba(14,165,233,0.4), 0 2px 0 rgba(3,105,161,0.9) inset; }
+    .btn-primary:active{ transform:translateY(1px); box-shadow:0 6px 14px rgba(14,165,233,0.3), 0 2px 0 rgba(3,105,161,0.9) inset; }
     .btn-primary:disabled{ background:#252B52; color:#6D75A3; box-shadow:none; cursor:not-allowed; transform:none; }
     .btn-secondary{
       background:var(--surface); color:var(--ink); border:1px solid var(--line);
@@ -220,22 +356,19 @@ const GlobalStyles = () => (
     }
 
     /* ---------- Hero ---------- */
-    .hero{ padding:56px 0 40px; }
-    .hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center; }
+    .hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center; position:relative; z-index:1; }
     @media (max-width:900px){ .hero-grid{ grid-template-columns:1fr; gap:40px; } }
 
     .hero-eyebrow{
       display:inline-flex; align-items:center; gap:7px;
       background:var(--primary-soft); color:var(--primary);
       padding:7px 14px; border-radius:999px; font-size:13.5px; font-weight:600;
-      margin-bottom:20px;
+      margin-bottom:0;
+      opacity:0; animation:heroFadeUp 600ms 80ms cubic-bezier(.2,.7,.2,1) both;
     }
-    .hero h1{ font-size:44px; line-height:1.08; margin-bottom:18px; }
-    @media (max-width:520px){ .hero h1{ font-size:33px; } }
-    .hero-sub{ font-size:17px; color:var(--ink-soft); max-width:460px; margin-bottom:30px; }
+    @media (prefers-reduced-motion: reduce){ .hero-eyebrow{ opacity:1; animation:none; } }
 
     /* token board hero visual */
-    .hero-visual{ position:relative; display:flex; justify-content:center; }
     .chip-behind{
       position:absolute; width:100%; max-width:360px; height:100%; top:16px; left:50%;
       transform:translateX(-50%) rotate(-3deg);
@@ -451,10 +584,10 @@ const GlobalStyles = () => (
     .btn-call-next{
       background:var(--accent); color:var(--on-accent); border:none;
       padding:16px 30px; border-radius:999px; font-size:16.5px; font-weight:700;
-      box-shadow:0 10px 24px rgba(240,166,60,0.32); flex-shrink:0;
+      box-shadow:0 10px 24px rgba(14,165,233,0.32); flex-shrink:0;
       transition:transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
     }
-    .btn-call-next:hover{ background:var(--accent-dark); transform:translateY(-2px) scale(1.02); box-shadow:0 16px 32px rgba(240,166,60,0.4); }
+    .btn-call-next:hover{ background:var(--accent-dark); transform:translateY(-2px) scale(1.02); box-shadow:0 16px 32px rgba(14,165,233,0.4); }
     .btn-call-next:active{ transform:translateY(1px) scale(1); }
     .btn-call-next:disabled{ background:rgba(255,255,255,0.25); color:rgba(255,255,255,0.6); box-shadow:none; cursor:not-allowed; transform:none; }
 
@@ -514,7 +647,7 @@ const GlobalStyles = () => (
       position:fixed; inset:0; color:#fff; display:flex; flex-direction:column;
       align-items:center; justify-content:center; text-align:center; font-family:'Inter',sans-serif; z-index:300; padding:40px;
       background:
-        radial-gradient(ellipse 60% 50% at 50% 38%, rgba(240,166,60,0.16), transparent 65%),
+        radial-gradient(ellipse 60% 50% at 50% 38%, rgba(14,165,233,0.16), transparent 65%),
         radial-gradient(ellipse 80% 60% at 50% 100%, rgba(23,34,74,0.6), transparent 70%),
         #0A1024;
       perspective:1400px;
@@ -522,14 +655,14 @@ const GlobalStyles = () => (
     .display-header{ position:absolute; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between; padding:28px 44px; }
     .display-biz{ font-family:'Space Grotesk',sans-serif; font-size:22px; font-weight:700; color:#fff; }
     .display-live{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--accent); font-weight:600; }
-    .display-live .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px 2px rgba(240,166,60,0.7); animation:displayPulse 1.6s ease-in-out infinite; }
+    .display-live .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px 2px rgba(14,165,233,0.7); animation:displayPulse 1.6s ease-in-out infinite; }
     .display-now-label{ font-size:20px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(255,255,255,0.55); font-weight:600; margin-bottom:18px; }
     .display-token{
       font-family:'JetBrains Mono',monospace; font-size:clamp(90px,16vw,220px); font-weight:700; color:var(--accent); line-height:1;
       text-shadow:
-        1px 1px 0 #CE8620, 2px 2px 0 #CE8620, 3px 3px 0 #CE8620, 4px 4px 0 #CE8620,
-        5px 5px 0 #B06B19, 6px 6px 0 #B06B19, 7px 7px 0 #B06B19, 8px 8px 0 #B06B19,
-        10px 10px 18px rgba(0,0,0,0.5), 0 0 70px rgba(240,166,60,0.4);
+        1px 1px 0 #0369A1, 2px 2px 0 #0369A1, 3px 3px 0 #0369A1, 4px 4px 0 #0369A1,
+        5px 5px 0 #075985, 6px 6px 0 #075985, 7px 7px 0 #075985, 8px 8px 0 #075985,
+        10px 10px 18px rgba(0,0,0,0.5), 0 0 70px rgba(14,165,233,0.4);
       animation:displayFloat 4s ease-in-out infinite;
       transform-style:preserve-3d;
     }
@@ -545,6 +678,222 @@ const GlobalStyles = () => (
     .display-footer{ position:absolute; bottom:24px; font-size:13px; color:rgba(255,255,255,0.35); }
     @keyframes displayFloat{ 0%,100%{ transform:translateZ(0) translateY(0);} 50%{ transform:translateZ(40px) translateY(-10px);} }
     @keyframes displayPulse{ 0%,100%{ opacity:1;} 50%{ opacity:0.4;} }
+
+    /* ---------- Scroll reveal ---------- */
+    .reveal{ opacity:0; transform:translateY(26px); transition:opacity 650ms cubic-bezier(.2,.7,.2,1), transform 650ms cubic-bezier(.2,.7,.2,1); }
+    .reveal-visible{ opacity:1; transform:translateY(0); }
+    .reveal.reveal-scale{ transform:translateY(16px) scale(0.96); }
+    .reveal.reveal-scale.reveal-visible{ transform:translateY(0) scale(1); }
+
+    /* ---------- Hero rebuild ---------- */
+    .hero{ padding:64px 0 48px; position:relative; overflow:hidden; }
+    .hero-bg{
+      position:absolute; inset:0; z-index:-3; pointer-events:none;
+      background:
+        radial-gradient(ellipse 70% 50% at 18% 0%, rgba(14,165,233,0.16), transparent 60%),
+        radial-gradient(ellipse 60% 45% at 100% 30%, rgba(34,211,238,0.1), transparent 60%);
+    }
+    .hero h1{ font-size:48px; line-height:1.08; margin:20px 0 18px; }
+    .hero h1 span{ display:block; opacity:0; animation:heroFadeUp 650ms cubic-bezier(.2,.7,.2,1) both; }
+    .hero h1 span.l2{ animation-delay:160ms; }
+    @media (max-width:520px){ .hero h1{ font-size:34px; } }
+    .hero-sub{ font-size:17px; color:var(--ink-soft); max-width:460px; margin-bottom:30px; opacity:0; animation:heroFadeUp 600ms 320ms cubic-bezier(.2,.7,.2,1) both; }
+    .hero-cta-row{ display:flex; gap:14px; flex-wrap:wrap; opacity:0; animation:heroFadeUp 600ms 420ms cubic-bezier(.2,.7,.2,1) both; }
+    @keyframes heroFadeUp{ from{ opacity:0; transform:translateY(16px);} to{ opacity:1; transform:translateY(0);} }
+    @media (prefers-reduced-motion: reduce){
+      .hero h1 span, .hero-sub, .hero-cta-row{ opacity:1; animation:none; }
+    }
+
+    /* hero visualization layer around the live board-card */
+    .hero-visual{ position:relative; display:flex; justify-content:center; opacity:0; animation:heroVizIn 700ms 200ms cubic-bezier(.2,.7,.2,1) both; }
+    @keyframes heroVizIn{ from{ opacity:0; transform:scale(0.96);} to{ opacity:1; transform:scale(1);} }
+    @media (prefers-reduced-motion: reduce){ .hero-visual{ opacity:1; animation:none; } }
+    .hero-viz-glow{
+      position:absolute; inset:-70px; z-index:-2; pointer-events:none; filter:blur(14px);
+      background:
+        radial-gradient(circle at 18% 18%, rgba(14,165,233,0.24), transparent 55%),
+        radial-gradient(circle at 85% 82%, rgba(34,211,238,0.18), transparent 55%);
+      transform:translate(calc(var(--mx,0) * 6px), calc(var(--my,0) * 6px));
+    }
+    .hero-particle{
+      position:absolute; width:5px; height:5px; border-radius:50%; z-index:-1; pointer-events:none;
+      background:var(--accent-dark); opacity:0.5; box-shadow:0 0 10px 2px rgba(34,211,238,0.5);
+      animation:particleDrift 7s ease-in-out infinite;
+      transform:translate(calc(var(--mx,0) * 10px), calc(var(--my,0) * 10px));
+    }
+    @keyframes particleDrift{ 0%,100%{ margin:0 0;} 50%{ margin:-16px 0 0 10px;} }
+    .hero-node{
+      position:absolute; display:flex; align-items:center; gap:8px; z-index:3;
+      background:rgba(11,31,51,0.82); border:1px solid rgba(255,255,255,0.12);
+      backdrop-filter:blur(8px);
+      padding:9px 14px 9px 11px; border-radius:999px; box-shadow:0 14px 30px rgba(0,0,0,0.35);
+      font-size:12.5px; font-weight:600; color:#fff; white-space:nowrap;
+      animation:nodeFloat 5s ease-in-out infinite;
+    }
+    .hero-node .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent-dark); box-shadow:0 0 8px 2px rgba(34,211,238,0.6); flex-shrink:0; }
+    .hero-node.n1{ top:-4%; left:-11%; animation-delay:0s; }
+    .hero-node.n2{ top:16%; right:-15%; animation-delay:1.1s; }
+    .hero-node.n3{ bottom:20%; left:-16%; animation-delay:2.1s; }
+    .hero-node.n4{ bottom:-3%; right:-9%; animation-delay:0.6s; }
+    @media (max-width:1160px){
+      .hero-node{ font-size:11.5px; padding:7px 11px 7px 9px; }
+      .hero-node.n1{ left:-2%; }
+      .hero-node.n2{ right:-2%; }
+      .hero-node.n3{ left:-3%; }
+      .hero-node.n4{ right:0%; }
+    }
+    @keyframes nodeFloat{
+      0%,100%{ transform:translate(calc(var(--mx,0) * 18px), calc(var(--my,0) * 18px)) translateY(0);}
+      50%{ transform:translate(calc(var(--mx,0) * 18px), calc(var(--my,0) * 18px)) translateY(-9px);}
+    }
+    @media (prefers-reduced-motion: reduce){ .hero-node{ animation:none; } }
+    @media (max-width:760px){ .hero-node{ display:none; } }
+
+    /* ---------- How it works: 3-step timeline ---------- */
+    .timeline{ position:relative; display:grid; grid-template-columns:repeat(3,1fr); gap:28px; }
+    @media (max-width:760px){ .timeline{ grid-template-columns:1fr; gap:20px; } }
+    .timeline-track{
+      position:absolute; top:27px; left:calc(16.66% ); right:calc(16.66%); height:2px; z-index:0;
+      background:var(--line); overflow:hidden;
+    }
+    @media (max-width:760px){ .timeline-track{ display:none; } }
+    .timeline-track-flow{
+      position:absolute; inset:0; width:40%;
+      background:linear-gradient(90deg, transparent, var(--accent), var(--accent-dark), transparent);
+      animation:timelineFlow 3.2s linear infinite;
+    }
+    @keyframes timelineFlow{ from{ transform:translateX(-100%);} to{ transform:translateX(350%);} }
+    .timeline-step{
+      position:relative; z-index:1; background:var(--surface); border:1px solid var(--line);
+      border-radius:var(--radius-lg); padding:28px 24px;
+      transition:border-color 300ms ease, box-shadow 300ms ease, transform 300ms ease;
+    }
+    .timeline-step.reveal-visible{ border-color:rgba(14,165,233,0.4); box-shadow:0 20px 50px rgba(14,165,233,0.12); }
+    .timeline-num{
+      width:54px; height:54px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+      background:var(--surface-strong); border:1px solid var(--line); margin-bottom:18px;
+      font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:var(--ink-faint);
+      transition:background 300ms ease, color 300ms ease, box-shadow 300ms ease, border-color 300ms ease;
+    }
+    .timeline-step.reveal-visible .timeline-num{
+      background:var(--accent); color:var(--on-accent); border-color:var(--accent);
+      box-shadow:0 0 0 6px rgba(14,165,233,0.15);
+    }
+    .timeline-step h4{ font-size:20px; margin-bottom:9px; }
+    .timeline-step p{ font-size:14.5px; color:var(--ink-soft); }
+
+    /* ---------- Product experience: phone mockup ---------- */
+    .product-section{ padding:90px 0; position:relative; overflow:hidden; }
+    .product-grid{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:60px; align-items:center; }
+    @media (max-width:900px){ .product-grid{ grid-template-columns:1fr; gap:44px; } }
+    .product-grid.reverse .phone-col{ order:2; }
+    @media (max-width:900px){ .product-grid.reverse .phone-col{ order:0; } }
+    .phone-col{ display:flex; justify-content:center; }
+    .phone-shell{
+      width:270px; height:548px; border-radius:40px; padding:14px; position:relative;
+      background:linear-gradient(165deg, #122238, #0B1A2E);
+      border:1px solid rgba(255,255,255,0.1);
+      box-shadow:0 50px 100px rgba(0,0,0,0.5), 0 2px 0 rgba(255,255,255,0.06) inset;
+      transform:translate(calc(var(--mx,0) * 10px), calc(var(--my,0) * 10px)) rotate(calc(var(--mx,0) * 3deg));
+      transition:transform 200ms ease-out;
+    }
+    .phone-notch{ position:absolute; top:14px; left:50%; transform:translateX(-50%); width:84px; height:18px; border-radius:999px; background:#040A14; z-index:2; }
+    .phone-screen{
+      width:100%; height:100%; border-radius:28px; overflow:hidden; position:relative;
+      background:linear-gradient(185deg, #0B1F33 0%, #07111F 100%);
+      display:flex; flex-direction:column; padding:36px 18px 20px;
+    }
+    .phone-app-label{ font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:4px; text-align:center; }
+    .phone-biz-label{ font-size:15px; font-weight:700; color:#fff; text-align:center; margin-bottom:22px; }
+    .phone-queue-card{
+      background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:18px;
+      padding:20px; text-align:center; margin-bottom:14px;
+    }
+    .phone-position-label{ font-size:11.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
+    .phone-position-num{
+      font-family:'Space Grotesk',sans-serif; font-size:46px; font-weight:700; color:var(--accent-dark);
+      animation:phonePosIn 350ms cubic-bezier(.2,.8,.2,1) both;
+    }
+    @keyframes phonePosIn{ from{ opacity:0; transform:translateY(-8px) scale(0.92);} to{ opacity:1; transform:translateY(0) scale(1);} }
+    .phone-wait-row{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+    .phone-status-pill{
+      margin-top:auto; text-align:center; font-size:13px; font-weight:700; padding:12px; border-radius:14px;
+      background:var(--accent-soft); color:var(--accent-dark);
+      transition:background 300ms ease, color 300ms ease;
+    }
+    .phone-status-pill.active{ background:var(--accent); color:var(--on-accent); }
+    .product-copy .section-head{ margin-bottom:22px; }
+    .product-feature-list{ list-style:none; margin:26px 0 0; padding:0; display:flex; flex-direction:column; gap:16px; }
+    .product-feature-list li{ display:flex; gap:12px; align-items:flex-start; font-size:15px; color:var(--ink-soft); }
+    .product-feature-list li svg{ color:var(--accent); flex-shrink:0; margin-top:2px; }
+
+    /* ---------- Features grid v2 ---------- */
+    .feature-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+    @media (max-width:900px){ .feature-grid{ grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:560px){ .feature-grid{ grid-template-columns:1fr; } }
+    .feature-card{
+      background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:26px;
+      transition:transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+    }
+    .feature-card:hover{ transform:translateY(-6px); box-shadow:0 22px 44px rgba(14,165,233,0.14); border-color:rgba(14,165,233,0.35); }
+    .feature-icon{
+      width:42px; height:42px; border-radius:12px; background:var(--primary-soft); color:var(--primary);
+      display:flex; align-items:center; justify-content:center; margin-bottom:16px;
+      transition:transform 220ms ease;
+    }
+    .feature-card:hover .feature-icon{ transform:scale(1.1) rotate(-6deg); }
+    .feature-card h4{ font-size:16.5px; margin-bottom:8px; }
+    .feature-card p{ font-size:14px; color:var(--ink-soft); }
+
+    /* ---------- Business / impact section ---------- */
+    .business-section{ padding:90px 0; }
+    .business-grid2{ display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center; }
+    @media (max-width:900px){ .business-grid2{ grid-template-columns:1fr; gap:36px; } }
+    .business-point-list{ list-style:none; margin:24px 0 0; padding:0; display:flex; flex-direction:column; gap:14px; }
+    .business-point-list li{ display:flex; gap:12px; align-items:flex-start; font-size:15px; color:var(--ink-soft); }
+    .business-point-list li svg{ color:var(--accent); flex-shrink:0; margin-top:2px; }
+    .impact-card{
+      background:var(--surface-strong); border-radius:var(--radius-lg); padding:34px; color:#fff;
+    }
+    .impact-stat{ display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-top:1px solid rgba(255,255,255,0.1); }
+    .impact-stat:first-child{ border-top:none; padding-top:0; }
+    .impact-stat .label{ font-size:14.5px; color:rgba(255,255,255,0.65); }
+    .impact-stat .trend{ display:flex; align-items:center; gap:6px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; }
+    .impact-stat .trend.up{ color:#4ADE80; }
+    .impact-stat .trend.down{ color:var(--accent-dark); }
+
+    /* ---------- Final CTA v2 ---------- */
+    .cta-section{ padding:90px 0; }
+    .cta-banner2{
+      position:relative; overflow:hidden; background:var(--surface-strong); border-radius:32px;
+      padding:72px 40px; text-align:center;
+    }
+    .cta-banner2-bg{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+    .cta-line{
+      position:absolute; height:1px; left:-10%; right:-10%;
+      background:linear-gradient(90deg, transparent, rgba(34,211,238,0.5), transparent);
+      animation:ctaLineMove 6s linear infinite;
+    }
+    .cta-line.l1{ top:22%; animation-duration:7s; }
+    .cta-line.l2{ top:52%; animation-duration:9s; animation-delay:1.4s; }
+    .cta-line.l3{ top:78%; animation-duration:5.5s; animation-delay:0.6s; }
+    @keyframes ctaLineMove{ from{ transform:translateX(-15%);} to{ transform:translateX(15%);} }
+    .cta-node-dot{
+      position:absolute; width:6px; height:6px; border-radius:50%; background:var(--accent-dark);
+      box-shadow:0 0 12px 3px rgba(34,211,238,0.6); animation:particleDrift 6s ease-in-out infinite;
+    }
+    .cta-banner2 h2{ font-size:40px; color:#fff; line-height:1.14; margin-bottom:14px; position:relative; z-index:1; }
+    @media (max-width:560px){ .cta-banner2 h2{ font-size:28px; } }
+    .cta-banner2 p{ color:rgba(255,255,255,0.68); font-size:16px; max-width:480px; margin:0 auto 30px; position:relative; z-index:1; }
+    .cta-banner2 .cta-actions{ position:relative; z-index:1; justify-content:center; }
+    @media (prefers-reduced-motion: reduce){ .cta-line, .cta-node-dot{ animation:none; } }
+
+    /* ---------- Section rhythm label ---------- */
+    .section-tag{
+      display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700;
+      letter-spacing:0.08em; text-transform:uppercase; color:var(--accent); margin-bottom:12px;
+    }
+    .section-tag .bar{ width:18px; height:2px; background:var(--accent); border-radius:2px; }
   `}</style>
 );
 
@@ -560,6 +909,39 @@ const CATEGORY_ICON = {
 const CATEGORIES = ["All", "Clinic", "Salon", "Service Center"];
 const CUSTOMER_TOKEN_KEY = "queueless_customer_token";
 const AUTH_KEY = "queueless_auth";
+
+const FEATURES = [
+  {
+    title: "Digital Queues",
+    desc: "Replace paper tickets and physical lines with a queue customers join from their phone.",
+    Icon: Smartphone,
+  },
+  {
+    title: "Real-Time Updates",
+    desc: "Queue position and wait time update live as the line moves — no refreshing, no guessing.",
+    Icon: Zap,
+  },
+  {
+    title: "Smart Notifications",
+    desc: "Customers are notified as their turn approaches, so they can step away and come right back.",
+    Icon: Bell,
+  },
+  {
+    title: "Estimated Wait Times",
+    desc: "Wait estimates are calculated from real service speed, not a static guess.",
+    Icon: Gauge,
+  },
+  {
+    title: "Business Management",
+    desc: "Call the next customer, add walk-ins, and manage the day from one simple dashboard.",
+    Icon: Building2,
+  },
+  {
+    title: "Customer Analytics",
+    desc: "See how your queue moves through the day to plan staffing around real demand.",
+    Icon: BarChart3,
+  },
+];
 
 function tokenNumber(token) {
   return parseInt(token.replace(/\D/g, ""), 10);
@@ -599,8 +981,9 @@ function PushNotification({ show, onClose }) {
   );
 }
 
-function Nav({ page, goTo, onScrollHow, onScrollPricing }) {
+function Nav({ page, goTo, onScrollHow, onScrollFeatures, onScrollPricing }) {
   const [open, setOpen] = useState(false);
+  const scrolled = useScrolled();
   const navItem = (label, targetPage, action) => (
     <button
       className={"nav-link" + (page === targetPage ? " active" : "")}
@@ -613,7 +996,7 @@ function Nav({ page, goTo, onScrollHow, onScrollPricing }) {
     </button>
   );
   return (
-    <div className="nav">
+    <div className={"nav" + (scrolled ? " nav-scrolled" : "")}>
       <div className="nav-inner">
         <button className="logo-btn" onClick={() => goTo("home")}>
           <span className="logo-mark">Q</span>
@@ -622,13 +1005,14 @@ function Nav({ page, goTo, onScrollHow, onScrollPricing }) {
         <div className="nav-links">
           {navItem("Home", "home")}
           {navItem("How It Works", "home", onScrollHow)}
+          {navItem("Features", "home", onScrollFeatures)}
           {navItem("Pricing", "home", onScrollPricing)}
         </div>
         <div className="nav-right">
           <button className="btn-outline-nav" onClick={() => goTo("dashboard")}>
             For Businesses
           </button>
-          <button className="btn-amber" onClick={() => goTo("businesses")}>
+          <button className="btn-accent" onClick={() => goTo("businesses")}>
             Join a Queue
           </button>
           <button className="hamburger" onClick={() => setOpen((o) => !o)} aria-label="Menu">
@@ -639,11 +1023,12 @@ function Nav({ page, goTo, onScrollHow, onScrollPricing }) {
       <div className={"mobile-menu" + (open ? " open" : "")}>
         {navItem("Home", "home")}
         {navItem("How It Works", "home", onScrollHow)}
+        {navItem("Features", "home", onScrollFeatures)}
         {navItem("Pricing", "home", onScrollPricing)}
         <button className="btn-outline-nav" onClick={() => { setOpen(false); goTo("dashboard"); }}>
           For Businesses
         </button>
-        <button className="btn-amber" onClick={() => { setOpen(false); goTo("businesses"); }}>
+        <button className="btn-accent" onClick={() => { setOpen(false); goTo("businesses"); }}>
           Join a Queue
         </button>
       </div>
@@ -652,9 +1037,51 @@ function Nav({ page, goTo, onScrollHow, onScrollPricing }) {
 }
 
 /* ---------------------------------------------------------
+   Product-experience phone mockup — a self-contained, looping
+   illustration of the customer-side countdown. Not wired to real
+   queue data; it exists purely to make the product legible at a glance.
+---------------------------------------------------------- */
+const PHONE_POSITIONS = [7, 6, 5, 4, 3, 2, 1, 0];
+
+function PhoneMockup() {
+  const [step, setStep] = useState(0);
+  const parallaxRef = useParallax();
+
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const id = setInterval(() => setStep((n) => (n + 1) % PHONE_POSITIONS.length), 1700);
+    return () => clearInterval(id);
+  }, []);
+
+  const pos = PHONE_POSITIONS[step];
+  const isTurn = pos === 0;
+
+  return (
+    <div className="phone-shell" ref={parallaxRef}>
+      <div className="phone-notch" />
+      <div className="phone-screen">
+        <div className="phone-app-label">QUEUELESS</div>
+        <div className="phone-biz-label">CityCare Diagnostic Center</div>
+        <div className="phone-queue-card">
+          <div className="phone-position-label">Your position</div>
+          <div className="phone-position-num" key={pos}>{isTurn ? "—" : `#${pos}`}</div>
+          <div className="phone-wait-row">
+            <span>Est. wait</span>
+            <span>{isTurn ? "0 min" : `${pos * 3} min`}</span>
+          </div>
+        </div>
+        <div className={"phone-status-pill" + (isTurn ? " active" : "")}>
+          {isTurn ? "You're almost up." : "Hang tight — we'll notify you."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
    Home page
 ---------------------------------------------------------- */
-function HomePage({ businesses, goTo, howRef, pricingRef }) {
+function HomePage({ businesses, goTo, howRef, featuresRef, pricingRef }) {
   const preview = businesses[0];
   const peopleAhead = preview.queue.length;
   const previewTokenNum = tokenNumber(preview.servingCustomer.token) + peopleAhead + 1;
@@ -662,23 +1089,44 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
   const progressPct = peopleAhead === 0 ? 100 : 8;
   const tilt = useTilt(16);
   const priceTilt = useTilt(12);
+  const heroParallax = useParallax();
 
   return (
     <>
       <section className="hero">
+        <div className="hero-bg" />
         <div className="container hero-grid">
           <div>
-            <div className="hero-eyebrow">Stop Waiting. Start Living.</div>
-            <h1>Your queue shouldn't own your time.</h1>
+            <div className="hero-eyebrow">
+              <Zap size={14} /> Digital queues for modern businesses
+            </div>
+            <h1>
+              <span className="l1">Stop Waiting.</span>
+              <span className="l2">Start Living.</span>
+            </h1>
             <p className="hero-sub">
-              Take a digital token, leave the waiting room and come back when you're almost next.
+              QUEUELESS lets people join and manage queues digitally instead of physically waiting —
+              take a token, go live your day, and come back right as your turn arrives.
             </p>
-            <button className="btn-primary" onClick={() => goTo("businesses")}>
-              Join a Queue
-            </button>
+            <div className="hero-cta-row">
+              <button className="btn-primary" onClick={() => goTo("businesses")}>
+                Get Started <ArrowRight size={17} />
+              </button>
+              <button className="btn-secondary" onClick={() => howRef.current?.scrollIntoView({ behavior: "smooth" })}>
+                See How It Works
+              </button>
+            </div>
           </div>
 
-          <div className="hero-visual">
+          <div className="hero-visual" ref={heroParallax}>
+            <div className="hero-viz-glow" />
+            <span className="hero-particle" style={{ top: "8%", left: "18%" }} />
+            <span className="hero-particle" style={{ top: "72%", left: "88%", animationDelay: "2.3s" }} />
+            <span className="hero-particle" style={{ top: "46%", left: "2%", animationDelay: "4.1s" }} />
+            <div className="hero-node n1"><MapPin size={13} /> Joined</div>
+            <div className="hero-node n2"><span className="dot" /> Position #{peopleAhead || 1}</div>
+            <div className="hero-node n3"><Clock size={13} /> Est. {Math.max(estWait, 6)} min</div>
+            <div className="hero-node n4"><span className="dot" /> Your turn</div>
             <div className="chip-behind" />
             <div
               ref={tilt.ref}
@@ -715,76 +1163,122 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
         </div>
       </section>
 
-      <section className="section">
+      <section className="section section-light" ref={howRef}>
         <div className="container">
-          <div className="section-head">
-            <h2>Stop Waiting. Start Living.</h2>
-            <p>QUEUELESS helps businesses replace physical waiting with predictable digital queues.</p>
-          </div>
-          <div className="benefit-grid">
-            <div className="benefit-card">
-              <div className="benefit-icon">
-                <Clock size={20} />
-              </div>
-              <h4>Save customer time</h4>
-              <p>Customers take a token and leave the waiting room instead of standing around for their turn.</p>
-            </div>
-            <div className="benefit-card">
-              <div className="benefit-icon">
-                <Armchair size={20} />
-              </div>
-              <h4>Reduce crowded waiting areas</h4>
-              <p>Fewer people sitting in your lobby at once means a calmer space for staff and customers alike.</p>
-            </div>
-            <div className="benefit-card">
-              <div className="benefit-icon">
-                <BarChart3 size={20} />
-              </div>
-              <h4>Understand your busiest hours</h4>
-              <p>See how your queue moves through the day so you can plan staffing around real demand.</p>
-            </div>
+          <Reveal className="section-head" style={{ maxWidth: 640 }}>
+            <div className="section-tag"><span className="bar" /> How it works</div>
+            <h2>Three steps to never waiting in line again.</h2>
+          </Reveal>
+          <div className="timeline">
+            <div className="timeline-track"><div className="timeline-track-flow" /></div>
+            <Reveal className="timeline-step" delay={0}>
+              <div className="timeline-num">01</div>
+              <h4>Join</h4>
+              <p>Open a business's queue and join digitally in seconds — no app download, no standing in line.</p>
+            </Reveal>
+            <Reveal className="timeline-step" delay={140}>
+              <div className="timeline-num">02</div>
+              <h4>Go</h4>
+              <p>Leave the waiting room and get on with your day. QUEUELESS tracks your position for you.</p>
+            </Reveal>
+            <Reveal className="timeline-step" delay={280}>
+              <div className="timeline-num">03</div>
+              <h4>Arrive</h4>
+              <p>Get notified as your turn approaches, and walk straight in when it's your time.</p>
+            </Reveal>
           </div>
         </div>
       </section>
 
-      <section className="section" ref={howRef}>
-        <div className="container">
-          <div className="section-head">
-            <h2>How It Works</h2>
+      <section className="product-section">
+        <div className="container product-grid">
+          <div className="phone-col">
+            <Reveal className="reveal-scale">
+              <PhoneMockup />
+            </Reveal>
           </div>
-          <div className="steps">
-            <div className="step-card">
-              <div className="step-num">1</div>
-              <h4>Scan the QR code</h4>
-              <p>Customers scan a code at the counter to open the queue for that business.</p>
+          <Reveal className="product-copy" delay={120}>
+            <div className="section-head">
+              <div className="section-tag"><span className="bar" /> Product experience</div>
+              <h2>Watch your position move, in real time.</h2>
+              <p>No refreshing, no asking the front desk. Your phone tells you exactly where you stand.</p>
             </div>
-            <div className="step-card">
-              <div className="step-num">2</div>
-              <h4>Get your digital token</h4>
-              <p>A token is issued right away, showing their place in line.</p>
-            </div>
-            <div className="step-card">
-              <div className="step-num">3</div>
-              <h4>Leave the waiting area</h4>
-              <p>No need to sit and wait. Run an errand or wait somewhere more comfortable.</p>
-            </div>
-            <div className="step-card">
-              <div className="step-num">4</div>
-              <h4>Return when you're almost next</h4>
-              <p>QUEUELESS lets them know when it's nearly their turn to come back.</p>
-            </div>
+            <ul className="product-feature-list">
+              <li><CheckCircle2 size={18} /> Live position and wait-time updates</li>
+              <li><CheckCircle2 size={18} /> A gentle notification as your turn nears</li>
+              <li><CheckCircle2 size={18} /> Works in the browser — nothing to install</li>
+            </ul>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="section section-light" ref={featuresRef}>
+        <div className="container">
+          <Reveal className="section-head" style={{ maxWidth: 640 }}>
+            <div className="section-tag"><span className="bar" /> Features</div>
+            <h2>Everything a modern queue needs.</h2>
+            <p>Built for both sides of the counter — simple for customers, powerful for businesses.</p>
+          </Reveal>
+          <div className="feature-grid">
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} className="feature-card" delay={(i % 3) * 110}>
+                <div className="feature-icon">
+                  <f.Icon size={20} />
+                </div>
+                <h4>{f.title}</h4>
+                <p>{f.desc}</p>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="section" ref={pricingRef}>
+      <section className="business-section">
+        <div className="container business-grid2">
+          <Reveal>
+            <div className="section-tag"><span className="bar" /> For businesses</div>
+            <h2 style={{ fontSize: 34, marginBottom: 14 }}>Queues are a business problem too.</h2>
+            <p style={{ color: "var(--ink-soft)", fontSize: 16 }}>
+              A crowded waiting room costs more than comfort — it costs staff time, customer
+              patience, and visibility into how your business actually runs.
+            </p>
+            <ul className="business-point-list">
+              <li><ShieldCheck size={18} /> Manage customer flow without adding staff</li>
+              <li><Armchair size={18} /> Reduce physical congestion in your space</li>
+              <li><TrendingUp size={18} /> Understand demand and optimize capacity</li>
+            </ul>
+            <div style={{ marginTop: 28 }}>
+              <button className="btn-dark" onClick={() => goTo("dashboard")}>For Businesses</button>
+            </div>
+          </Reveal>
+          <Reveal delay={150} className="reveal-scale">
+            <div className="impact-card">
+              <div className="impact-stat">
+                <span className="label">Waiting-room congestion</span>
+                <span className="trend down"><TrendingDown size={18} /> Lower</span>
+              </div>
+              <div className="impact-stat">
+                <span className="label">Customer satisfaction</span>
+                <span className="trend up"><TrendingUp size={18} /> Higher</span>
+              </div>
+              <div className="impact-stat">
+                <span className="label">Operational visibility</span>
+                <span className="trend up"><TrendingUp size={18} /> Higher</span>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="section section-light" ref={pricingRef}>
         <div className="container">
-          <div className="section-head">
+          <Reveal className="section-head" style={{ maxWidth: 640 }}>
+            <div className="section-tag"><span className="bar" /> Pricing</div>
             <h2>Pricing</h2>
             <p>Proposed pricing for this prototype, to be validated with real businesses.</p>
-          </div>
+          </Reveal>
           <div className="price-grid">
-            <div className="price-card">
+            <Reveal as="div" className="price-card" delay={0}>
               <div className="price-tier">Starter</div>
               <div className="price-amount">Rs 3,000</div>
               <div className="price-period">per month</div>
@@ -796,11 +1290,13 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
               <button className="btn-secondary" onClick={() => goTo("dashboard")}>
                 Get Started
               </button>
-            </div>
-            <div
+            </Reveal>
+            <Reveal
+              as="div"
+              delay={100}
               ref={priceTilt.ref}
               className="price-card highlight tilt-card"
-              style={priceTilt.style}
+              style={{ ...priceTilt.style }}
               onMouseMove={priceTilt.onMouseMove}
               onMouseLeave={priceTilt.onMouseLeave}
             >
@@ -817,8 +1313,8 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
               <button className="btn-primary" onClick={() => goTo("dashboard")}>
                 Get Started
               </button>
-            </div>
-            <div className="price-card">
+            </Reveal>
+            <Reveal as="div" className="price-card" delay={200}>
               <div className="price-tier">Enterprise</div>
               <div className="price-amount">Custom pricing</div>
               <div className="price-period">For large organizations</div>
@@ -830,27 +1326,37 @@ function HomePage({ businesses, goTo, howRef, pricingRef }) {
               <a href="mailto:hello@queueless.pk" className="btn-secondary">
                 Contact Sales
               </a>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
 
-      <section className="section">
+      <section className="cta-section">
         <div className="container">
-          <div className="cta-banner">
-            <div>
-              <h3>See QUEUELESS in action.</h3>
-              <p>Try the customer flow or open the business dashboard.</p>
+          <Reveal className="cta-banner2">
+            <div className="cta-banner2-bg">
+              <span className="cta-line l1" />
+              <span className="cta-line l2" />
+              <span className="cta-line l3" />
+              <span className="cta-node-dot" style={{ top: "26%", left: "14%" }} />
+              <span className="cta-node-dot" style={{ top: "64%", left: "80%", animationDelay: "2s" }} />
+              <span className="cta-node-dot" style={{ top: "40%", left: "50%", animationDelay: "3.4s" }} />
             </div>
+            <h2>Your time is yours.<br />Don't spend it waiting.</h2>
+            <p>Join a queue in seconds, or bring QUEUELESS to your business.</p>
             <div className="cta-actions">
               <button className="btn-primary" onClick={() => goTo("businesses")}>
-                Join a Queue
+                Get Started <ArrowRight size={17} />
               </button>
-              <button className="btn-secondary" style={{ background: "transparent", borderColor: "rgba(255,255,255,0.3)", color: "#fff" }} onClick={() => goTo("dashboard")}>
+              <button
+                className="btn-secondary"
+                style={{ background: "transparent", borderColor: "rgba(255,255,255,0.3)", color: "#fff" }}
+                onClick={() => goTo("dashboard")}
+              >
                 For Businesses
               </button>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
     </>
@@ -1443,7 +1949,13 @@ function Footer({ goTo }) {
             <span style={{ fontSize: 14.5, color: "var(--ink-soft)" }}>Karachi, Pakistan</span>
           </div>
         </div>
-        <div className="footer-bottom">© 2026 QUEUELESS. All rights reserved.</div>
+        <div className="footer-bottom" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <span>© 2026 QUEUELESS. All rights reserved.</span>
+          <span style={{ display: "flex", gap: 18 }}>
+            <span>Privacy</span>
+            <span>Terms</span>
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1553,6 +2065,7 @@ function MainApp() {
   const [toast, setToast] = useState("");
   const [showPush, setShowPush] = useState(false);
   const howRef = useRef(null);
+  const featuresRef = useRef(null);
   const pricingRef = useRef(null);
 
   const refreshBusinesses = useCallback(async () => {
@@ -1690,11 +2203,18 @@ function MainApp() {
         page={page}
         goTo={goTo}
         onScrollHow={() => scrollToSection(howRef)}
+        onScrollFeatures={() => scrollToSection(featuresRef)}
         onScrollPricing={() => scrollToSection(pricingRef)}
       />
 
       {page === "home" && (
-        <HomePage businesses={businesses} goTo={goTo} howRef={howRef} pricingRef={pricingRef} />
+        <HomePage
+          businesses={businesses}
+          goTo={goTo}
+          howRef={howRef}
+          featuresRef={featuresRef}
+          pricingRef={pricingRef}
+        />
       )}
       {page === "businesses" && <BusinessesPage businesses={businesses} goToBusiness={goToBusiness} />}
       {page === "detail" && (
